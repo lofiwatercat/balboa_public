@@ -1,6 +1,5 @@
 #include "hw1.h"
 #include "hw1_scenes.h"
-#include "hw1_helper.h"
 
 using namespace hw1;
 
@@ -16,10 +15,7 @@ Image3 hw_1_1(const std::vector<std::string> &params) {
     for (int i = 0; i < (int)params.size(); i++) {
         if (params[i] == "-center") {
             Real x = std::stof(params[++i]);
-            Real y = std::stof(params[++i]);
-            center = Vector2{x, y};
-        } else if (params[i] == "-radius") {
-            radius = std::stof(params[++i]);
+            Real y = std::stof(params[++i]); center = Vector2{x, y}; } else if (params[i] == "-radius") { radius = std::stof(params[++i]);
         } else if (params[i] == "-color") {
             Real r = std::stof(params[++i]);
             Real g = std::stof(params[++i]);
@@ -33,18 +29,19 @@ Image3 hw_1_1(const std::vector<std::string> &params) {
 
 
     // Loop through a square where the circle is
-    for (int y = 0; y < radius * 2; y++) {
-        for (int x = 0; x < radius * 2; x++) {
-            // isInCircle()            
-        }
-    }
+    // for (int y = 0; y < radius * 2; y++) {
+    //     for (int x = 0; x < radius * 2; x++) {
+    //         // isInCircle()            
+    //     }
+    // }
 
 
     for (int y = 0; y < img.height; y++) {
         for (int x = 0; x < img.width; x++) {
-            img(x, y) = Vector3{1, 1, 1};
+            img(x, y) = Vector3{0.5, 0.5, 0.5};
         }
     }
+    renderCircle(img, center, radius, color);
     
     // test patch
     // for (int i = 0; i < 100; i++) {
@@ -53,7 +50,6 @@ Image3 hw_1_1(const std::vector<std::string> &params) {
     //         int y = 240 + j;
     //         img(x, y) = Vector3{0.3, 0.7, 0.5};
     //     }
-        
     // }
     return img;
 }
@@ -187,4 +183,33 @@ Image3 hw_1_6(const std::vector<std::string> &params) {
         }
     }
     return img;
+}
+
+// Takes the canvas, center, radius, and color
+void renderCircle(Image3& canvas, Vector2 center, Real radius, Vector3 color) {
+    // Need to find the x and y inside the circle
+    for (Real i = center[0] - radius; i < center[0] + radius; i++) {
+        for (Real j = center[1] - radius; j < center[1] + radius; j++) {
+            if (isInCircle(i, j, center, radius)) {
+                // Flip Y since canvas starts from bottom left
+                Real flippedY = canvas.height - 1 - j;
+
+                // Make sure that we are within the canvas
+                if (i < canvas.width && i > 0 && flippedY < canvas.height && flippedY > 0) {
+                    canvas(i, flippedY) = color;
+                }
+            }
+        }
+    }
+}
+
+// Function to see if a pixel is within the circle
+bool isInCircle(Real x, Real y, Vector2 center, Real radius) {
+    // Distance from radius = sqrt(|x - center.x|^2 + |y - center.y|^2)
+    Real distance = sqrt(pow(center[0] - x, 2) + pow(center[1] - y, 2));
+    if (distance < radius) {
+        return true;
+    } else {
+        return false;
+    }
 }
