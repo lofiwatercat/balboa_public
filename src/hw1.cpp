@@ -103,9 +103,29 @@ Image3 hw_1_2(const std::vector<std::string> &params) {
 
     for (int y = 0; y < img.height; y++) {
         for (int x = 0; x < img.width; x++) {
-            img(x, y) = Vector3{1, 1, 1};
+            img(x, y) = Vector3{0.5, 0.5, 0.5};
         }
     }
+
+    // Need to render the polyline
+    // Cast a ray through the lines, if the pixel hits even, then its out, odd = in
+    // Draw a line first
+
+    // For drawing a shape and filling it
+    // Loop through the bounding area
+    // for (int i = 0; i < img.width; i++) {
+    //     for (int j = 0; j < img.height; j++) {
+    //         Vector2 point = Vector2(i, j);
+    //         if (isInPoly(point, polyline)) {
+    //             img(i, img.height - 1 - j) = *fill_color;
+    //         }
+    //     }
+    // }
+
+    if (is_closed) renderSimpleShape(img, polyline, *fill_color);
+
+
+    
     return img;
 }
 
@@ -212,4 +232,77 @@ bool isInCircle(Real x, Real y, Vector2 center, Real radius) {
     } else {
         return false;
     }
+}
+
+void drawLine(Image3& canvas, Vector3 color, Vector2 point_one, Vector2 point_two) {
+    Real dx = point_two.x - point_one.x;
+    Real dy = point_two.y - point_one.y;
+    double length = sqrt(dx * dx + dy * dy);
+
+    for (int i = 0; i <= length; i++) {
+        Real t = i / length;
+        int x = point_one.x + t * dx;
+        int y = point_one.y + t * dy;
+
+        canvas(x, canvas.height - 1 - y) = color;
+    }
+
+}
+
+// Checks if a pixel is inside a polyline
+// point: the pixel location
+// polyline: the list of points
+bool isInPoly(Vector2 point, std::vector<Vector2> polyline) {
+    bool inside = false;
+    for (int i = 0; i < polyline.size(); i++) {
+        Vector2 point_one = polyline[i];
+        Vector2 point_two = polyline[(i + 1) % polyline.size()];
+        // Real dx = point_two.x - point_one.x;
+        // Real dy = point_two.y - point_one.y;
+        // double length = sqrt(dx * dx + dy * dy);
+        if (rayIntersectLine(point, point_one, point_two)) {
+            inside = !inside;   
+        }
+    }
+
+    return inside;    
+}
+
+// point is the pixel we cast the ray from, point one and two are the beginning
+// and end of the line
+bool rayIntersectLine(Vector2 point, Vector2 point_one, Vector2 point_two) {
+    Real dx = point_two.x - point_one.x;
+    Real dy = point_two.y - point_one.y;
+
+    Real y_min = std::min(point_one.y, point_two.y);
+    Real y_max = std::max(point_one.y, point_two.y);
+
+    if (dy == 0) return false;
+    if (point.y < y_min || point.y >= y_max) return false;
+
+    // qx + s = p0x + t * dx
+    // qy     = p0y + t * dy
+    // t = (qy - p0y) / dy
+    // s = p0x + t * dx - qx
+
+    Real t = (point.y - point_one.y) / dy;
+    Real s = point_one.x + t * dx - point.x;
+
+    if (t >= 0 && t <= 1 && s >= 0) {
+        return true;
+    }
+
+    return false;
+}
+
+void renderSimpleShape(Image3& canvas, std::vector<Vector2> polyline, Vector3 fill_color) {
+    for (int i = 0; i < canvas.width; i++) {
+        for (int j = 0; j < canvas.height; j++) {
+            Vector2 point = Vector2(i, j);
+            if (isInPoly(point, polyline)) {
+                canvas(i, canvas.height - 1 - j) = fill_color;
+            }
+        }
+    }
+
 }
