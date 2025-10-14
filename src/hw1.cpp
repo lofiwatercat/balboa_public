@@ -1,5 +1,6 @@
 #include "hw1.h"
 #include "hw1_scenes.h"
+#include "vector.h"
 
 using namespace hw1;
 
@@ -41,16 +42,8 @@ Image3 hw_1_1(const std::vector<std::string> &params) {
             img(x, y) = Vector3{0.5, 0.5, 0.5};
         }
     }
-    renderCircle(img, center, radius, color);
+    renderCircle(img, center, radius, std::optional<Vector3>{color});
     
-    // test patch
-    // for (int i = 0; i < 100; i++) {
-    //     for (int j = 0; j < 100; j++) {
-    //         int x = 320 + i;
-    //         int y = 240 + j;
-    //         img(x, y) = Vector3{0.3, 0.7, 0.5};
-    //     }
-    // }
     return img;
 }
 
@@ -107,25 +100,10 @@ Image3 hw_1_2(const std::vector<std::string> &params) {
         }
     }
 
-    // Need to render the polyline
-    // Cast a ray through the lines, if the pixel hits even, then its out, odd = in
-    // Draw a line first
+    if (is_closed && fill_color) renderSimpleShape(img, polyline, *fill_color);
 
-    // For drawing a shape and filling it
-    // Loop through the bounding area
-    // for (int i = 0; i < img.width; i++) {
-    //     for (int j = 0; j < img.height; j++) {
-    //         Vector2 point = Vector2(i, j);
-    //         if (isInPoly(point, polyline)) {
-    //             img(i, img.height - 1 - j) = *fill_color;
-    //         }
-    //     }
-    // }
+    if (stroke_color) drawLines(img, *stroke_color, stroke_width, polyline, is_closed);
 
-    if (is_closed) renderSimpleShape(img, polyline, *fill_color);
-
-
-    
     return img;
 }
 
@@ -145,6 +123,31 @@ Image3 hw_1_3(const std::vector<std::string> &params) {
             img(x, y) = Vector3{1, 1, 1};
         }
     }
+
+    // Background
+    for (int y = 0; y < img.height; y++) {
+        for (int x = 0; x < img.width; x++) {
+            img(x, y) = scene.background;
+        }
+    }
+
+    // Draw the circles
+    for (auto it = scene.shapes.rbegin(); it != scene.shapes.rend(); it++) {
+        auto& shape = *it;
+        Vector3 default_color{0.5, 0.5, 0.5};
+        if (auto *circle = std::get_if<Circle>(&shape)) {
+            // do something with circle
+            renderCircle(img, circle->center, circle->radius, circle->fill_color, circle->stroke_width, circle->stroke_color);
+        } else if (auto *polyline = std::get_if<Polyline>(&shape)) {
+            // do something with polyline
+            if (polyline->is_closed && polyline->fill_color) renderSimpleShape(img, polyline->points, polyline->fill_color.value_or(default_color));
+
+            if (polyline->stroke_color) drawLines(img, polyline->stroke_color.value(), polyline->stroke_width, polyline->points, polyline->is_closed);
+        }
+    }
+
+
+
     return img;
 }
 
@@ -206,66 +209,65 @@ Image3 hw_1_6(const std::vector<std::string> &params) {
 }
 
 // Takes the canvas, center, radius, and color
-void renderCircle(Image3& canvas, Vector2 center, Real radius, Vector3 color) {
+void renderCircle(Image3& canvas, Vector2 center, Real radius, std::optional<Vector3> color, Real stroke_width, std::optional<Vector3> stroke_color) {
+    Real half_stroke = stroke_width / 2;
+    // Make sure we are within the canvas, and include the extra area for strokes
+    int x0 = std::max(int(center[0] - radius - half_stroke), 0);
+    int x1 = std::min(int(center[0] + radius + half_stroke), canvas.width - 1);
+    int y0 = std::max(int(center[1] - radius - half_stroke), 0);
+    int y1 = std::min(int(center[1] + radius + half_stroke), canvas.height - 1);
     // Need to find the x and y inside the circle
-    for (Real i = center[0] - radius; i < center[0] + radius; i++) {
-        for (Real j = center[1] - radius; j < center[1] + radius; j++) {
-            if (isInCircle(i, j, center, radius)) {
-                // Flip Y since canvas starts from bottom left
-                Real flippedY = canvas.height - 1 - j;
-
-                // Make sure that we are within the canvas
-                if (i < canvas.width && i > 0 && flippedY < canvas.height && flippedY > 0) {
-                    canvas(i, flippedY) = color;
-                }
+    for (int i = x0; i <= x1; i++) {
+        for (int j = y0; j <= y1; j++) {
+            // Flip Y since canvas starts from bottom left
+            Real flippedY = canvas.height - 1 - j;
+            if (color && isInCircle(i, j, center, radius)) {
+                canvas(i, flippedY) = *color;
             }
+            if (stroke_color && stroke_width > 0 && isInCircle(i, j, center, radius, stroke_width)) {
+                canvas(i, flippedY) = *stroke_color;
+            }
+
         }
     }
 }
 
 // Function to see if a pixel is within the circle
-bool isInCircle(Real x, Real y, Vector2 center, Real radius) {
+bool isInCircle(Real x, Real y, Vector2 center, Real radius, Real stroke_width) {
     // Distance from radius = sqrt(|x - center.x|^2 + |y - center.y|^2)
     Real distance = sqrt(pow(center[0] - x, 2) + pow(center[1] - y, 2));
-    if (distance < radius) {
-        return true;
+    if (stroke_width > 0) {
+        return distance >= radius - stroke_width / 2 && distance <= radius + stroke_width / 2;
     } else {
-        return false;
+        return distance <= radius;
     }
 }
 
-void drawLine(Image3& canvas, Vector3 color, Vector2 point_one, Vector2 point_two) {
-    Real dx = point_two.x - point_one.x;
-    Real dy = point_two.y - point_one.y;
-    double length = sqrt(dx * dx + dy * dy);
-
-    for (int i = 0; i <= length; i++) {
-        Real t = i / length;
-        int x = point_one.x + t * dx;
-        int y = point_one.y + t * dy;
-
-        canvas(x, canvas.height - 1 - y) = color;
-    }
-
-}
 
 // Checks if a pixel is inside a polyline
 // point: the pixel location
 // polyline: the list of points
 bool isInPoly(Vector2 point, std::vector<Vector2> polyline) {
-    bool inside = false;
+    // For direction
+    int count = 0;
     for (int i = 0; i < polyline.size(); i++) {
         Vector2 point_one = polyline[i];
         Vector2 point_two = polyline[(i + 1) % polyline.size()];
-        // Real dx = point_two.x - point_one.x;
-        // Real dy = point_two.y - point_one.y;
-        // double length = sqrt(dx * dx + dy * dy);
-        if (rayIntersectLine(point, point_one, point_two)) {
-            inside = !inside;   
+        bool intersect = rayIntersectLine(point, point_one, point_two);
+
+        if (point_two.y > point_one.y && intersect) {
+            count++;   
+        } else if (point_two.y < point_one.y && intersect) {
+            count--;
         }
     }
 
-    return inside;    
+    if (count != 0) {
+        return true;
+    } else {
+        return false;
+    }
+
 }
 
 // point is the pixel we cast the ray from, point one and two are the beginning
@@ -273,6 +275,7 @@ bool isInPoly(Vector2 point, std::vector<Vector2> polyline) {
 bool rayIntersectLine(Vector2 point, Vector2 point_one, Vector2 point_two) {
     Real dx = point_two.x - point_one.x;
     Real dy = point_two.y - point_one.y;
+
 
     Real y_min = std::min(point_one.y, point_two.y);
     Real y_max = std::max(point_one.y, point_two.y);
@@ -305,4 +308,63 @@ void renderSimpleShape(Image3& canvas, std::vector<Vector2> polyline, Vector3 fi
         }
     }
 
+}
+
+// Draw lines, takes in
+// the canavs, color, width, and the polylines
+void drawLines(Image3& canvas, Vector3 color, Real width, std::vector<Vector2> polylines, bool closed) {
+    for (int i = 0; i < polylines.size() - 1; i++) {
+        Vector2 p0 = polylines[i];
+        Vector2 p1 = polylines[i + 1];
+
+        drawLine(canvas, color, p0, p1, width);
+    }
+
+    if (closed) {
+        drawLine(canvas, color, polylines.back(), polylines.front(), width);
+    }
+}
+
+// Draws the actual lines given two points
+void drawLine(Image3& canvas, Vector3 color, Vector2 point_one, Vector2 point_two, Real width) {
+    Real dx = point_two.x - point_one.x;
+    Real dy = point_two.y - point_one.y;
+
+    for (int i = 0; i < canvas.width; i++) {
+        for (int j = 0; j < canvas.height; j++) {
+            Vector2 q;
+            q.x = i;
+            q.y = j;
+            if (isInLine(q, point_one, point_two, width)) {
+                canvas(i, canvas.height - 1 -j) = color;
+            }
+        }
+    }
+
+}
+
+// Checks if a pixel at q is in a line or not
+bool isInLine(Vector2 q0, Vector2 p0, Vector2 p1, Real width) {
+    Vector2 v = p1 - p0;    
+    Vector2 wq = q0 - p0;
+
+    Real v_length = std::sqrt(v.x * v.x + v.y * v.y);
+    Vector2 v_normalized = v / v_length;
+
+    // Real l = (v.x * wq.x + v.y * wq.y) / v_length;
+    Real l = dot(wq, v_normalized);
+    l = std::max(0.0, std::min(v_length, l));
+
+    Vector2 q1 = p0 + l * v_normalized;
+
+    Vector2 q_diff = q0 - q1;
+    Real q_length = std::sqrt(q_diff.x * q_diff.x + q_diff.y * q_diff.y);
+
+    // Flat caps
+    // if (l > 0 && l < v_length && q_length < width/2) {
+    //     return true;
+    // }
+
+    // Rounded caps
+    return (q_length <= width/2);
 }
