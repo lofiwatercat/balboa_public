@@ -24,7 +24,34 @@ void drawLines(Image3&, Vector3, Real, std::vector<Vector2>, bool);
 void drawLine(Image3&, Vector3, Vector2, Vector2, Real);
 bool isInLine(Vector2, Vector2, Vector2, Real);
 
-void renderTransformedCircle(Image3& canvas, Matrix3x3 transform, Real radius, std::optional<Vector3> fill_color, Real stroke_width, std::optional<Vector3> stroke_color);
+void renderTransformedCircle(Image3& canvas, Matrix3x3 transform, Real radius, std::optional<Vector3> fill_color, Real stroke_width, std::optional<Vector3> stroke_color, Vector3 background, int super_sample);
 
 std::vector<Vector2> transformPoints(const std::vector<Vector2>& points, const Matrix3x3 transform);
 
+void drawLineSuper(
+    Image3& canvas,
+    Vector3 color,
+    Vector2 point_one,
+    Vector2 point_two,
+    Real width,
+    Vector3 background,
+    int super_sample
+);
+
+void drawLinesSuper(
+    Image3& canvas,
+    Vector3 color,
+    Real width,
+    const std::vector<Vector2>& polylines,
+    bool closed,
+    Vector3 background,
+    int super_sample
+);
+
+void renderSimpleShapeSuper(
+    Image3& canvas,
+    const std::vector<Vector2>& polyline,
+    Vector3 fill_color,
+    Vector3 background,
+    int super_sample = 4
+);

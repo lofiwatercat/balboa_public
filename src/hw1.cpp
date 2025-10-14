@@ -178,7 +178,6 @@ Image3 hw_1_4(const std::vector<std::string> &params) {
     // Draw the shapes
     for (auto it = scene.shapes.rbegin(); it != scene.shapes.rend(); it++) {
         auto& shape = *it;
-        Vector3 default_color{0.5, 0.5, 0.5};
         if (auto *circle = std::get_if<Circle>(&shape)) {
             // do something with circle
             
@@ -188,7 +187,9 @@ Image3 hw_1_4(const std::vector<std::string> &params) {
                 circle->radius,
                 circle->fill_color,
                 circle->stroke_width,
-                circle->stroke_color);
+                circle->stroke_color,
+                scene.background,
+                1);
         } else if (auto *polyline = std::get_if<Polyline>(&shape)) {
             // do something with polyline
             // transform polyline
@@ -200,7 +201,7 @@ Image3 hw_1_4(const std::vector<std::string> &params) {
             Real scaledStroke = polyline->stroke_width * avgScale;
 
             
-            if (polyline->is_closed && polyline->fill_color) renderSimpleShape(img, transformed_points, polyline->fill_color.value_or(default_color));
+            if (polyline->is_closed && polyline->fill_color) renderSimpleShape(img, transformed_points, polyline->fill_color.value());
 
             if (polyline->stroke_color) drawLines(img, polyline->stroke_color.value(), scaledStroke, transformed_points, polyline->is_closed);
         }
@@ -222,11 +223,53 @@ Image3 hw_1_5(const std::vector<std::string> &params) {
 
     Image3 img(scene.resolution.x, scene.resolution.y);
 
+    // for (int y = 0; y < img.height; y++) {
+    //     for (int x = 0; x < img.width; x++) {
+    //         img(x, y) = Vector3{1, 1, 1};
+    //     }
+    // }
     for (int y = 0; y < img.height; y++) {
         for (int x = 0; x < img.width; x++) {
-            img(x, y) = Vector3{1, 1, 1};
+            img(x, y) = scene.background;
         }
     }
+
+
+    int super_sample = 4;
+    // Draw the shapes
+    for (auto it = scene.shapes.rbegin(); it != scene.shapes.rend(); it++) {
+        auto& shape = *it;
+        Vector3 default_color{0.5, 0.5, 0.5};
+        if (auto *circle = std::get_if<Circle>(&shape)) {
+            // do something with circle
+            
+            renderTransformedCircle(
+                img,
+                circle->transform,
+                circle->radius,
+                circle->fill_color,
+                circle->stroke_width,
+                circle->stroke_color,
+                scene.background,
+                super_sample);
+        } else if (auto *polyline = std::get_if<Polyline>(&shape)) {
+            // do something with polyline
+            // transform polyline
+            std::vector<Vector2> transformed_points = transformPoints(polyline->points, polyline->transform);
+            // transform stroke_width
+            Real scaleX = std::sqrt(polyline->transform(0,0) * polyline->transform(0,0) + polyline->transform(1,0) * polyline->transform(1,0));
+            Real scaleY = std::sqrt(polyline->transform(0,1) * polyline->transform(0,1) + polyline->transform(1,1) * polyline->transform(1,1));
+            Real avgScale = (scaleX + scaleY) / 2;
+            Real scaledStroke = polyline->stroke_width * avgScale;
+
+            
+            if (polyline->is_closed && polyline->fill_color) renderSimpleShapeSuper(img, transformed_points, polyline->fill_color.value(), scene.background, super_sample);
+
+            if (polyline->stroke_color) drawLinesSuper(img, polyline->stroke_color.value(), scaledStroke, transformed_points, polyline->is_closed, scene.background, super_sample);
+        }
+    }
+
+    
     return img;
 }
 
@@ -416,26 +459,43 @@ void renderTransformedCircle(
     Real radius,
     std::optional<Vector3> fill_color,
     Real stroke_width,
-    std::optional<Vector3> stroke_color
+    std::optional<Vector3> stroke_color,
+    Vector3 background,
+    int super_sample
 ) {
     // Check if the pixel in the canvas space fits in the object space after transforming
     Matrix3x3 invT = inverse(transform);
 
+    Real pixel_step = 1.0 / super_sample;
+
     for (int i = 0; i < canvas.width; i++) {
         for (int j = 0; j < canvas.height; j++) {
-            Real flippedY = canvas.height - 1 - j;
+            // For super sampling
+            Vector3 accum_color{0, 0, 0};
 
-            Vector3 c_pixel = Vector3{(Real) i, (Real)flippedY, 1.0};
+            for (int sx = 0; sx < super_sample; sx++) {
+                for (int sy = 0; sy < super_sample; sy++) {
+                    Real sample_x = i + (sx + 0.5) * pixel_step;
+                    Real sample_y = j + (sy + 0.5) * pixel_step;
+                    Vector3 c_pixel = Vector3{sample_x, canvas.height - 1 - sample_y, 1.0};
+                    Vector3 o_pixel = invT * c_pixel;
 
-            Vector3 o_pixel = invT * c_pixel;
+                    Real dist = std::sqrt(o_pixel.x * o_pixel.x + o_pixel.y * o_pixel.y);
+                    Vector3 sample_color = background;
 
-            Real dist = std::sqrt(o_pixel.x * o_pixel.x + o_pixel.y * o_pixel.y);
+                    if (fill_color && dist <= radius) {
+                        sample_color = *fill_color;
+                    } else if (stroke_color && stroke_width > 0 && dist >= radius - stroke_width / 2 && dist <= radius + stroke_width / 2) {
+                        sample_color = *stroke_color;
+                    }
 
-            if (fill_color && dist <= radius) {
-                canvas(i, j) = *fill_color;
-            } else if (stroke_color && stroke_width > 0 && dist >= radius - stroke_width / 2 && dist <= radius + stroke_width / 2) {
-                canvas(i, j) = *stroke_color;
+                    accum_color += sample_color;
+                }
             }
+
+            int avg_factor = super_sample * super_sample;
+            canvas(i, j) = Vector3{accum_color.x / avg_factor, accum_color.y / avg_factor, accum_color.z / avg_factor};
+
         }
     }
 }
@@ -449,3 +509,102 @@ std::vector<Vector2> transformPoints(const std::vector<Vector2>& points, const M
    }
    return result;
 }
+
+void drawLineSuper(
+        Image3& canvas,
+        Vector3 color,
+        Vector2 point_one,
+        Vector2 point_two,
+        Real width,
+        Vector3 background,
+        int super_sample
+) {
+    Real pixel_step = 1.0 / super_sample;
+
+    for (int i = 0; i < canvas.width; i++) {
+        for (int j = 0; j < canvas.height; j++) {
+            Vector3 accum_color{0,0,0};
+
+            for (int sx = 0; sx < super_sample; sx++) {
+                for (int sy = 0; sy < super_sample; sy++) {
+                    Real sample_x = i + (sx + 0.5) * pixel_step;
+                    Real sample_y = j + (sy + 0.5) * pixel_step;
+                    Real sample_flippedY = canvas.height - 1 - sample_y;
+                    Vector2 q{sample_x, sample_flippedY};
+                    Vector3 sample_color = background;
+
+                    if (isInLine(q, point_one, point_two, width)) {
+                        sample_color = color;
+                    }
+                    accum_color += sample_color;
+                }
+            }
+
+            Real avg_factor = super_sample * super_sample;
+            Vector3 final_color = accum_color / avg_factor;
+
+            // Blend with existing pixel color to accumulate multiple lines
+            canvas(i, canvas.height - 1 - j) = final_color;
+        }
+    }
+}
+
+void drawLinesSuper(
+    Image3& canvas,
+    Vector3 color,
+    Real width,
+    const std::vector<Vector2>& polylines,
+    bool closed,
+    Vector3 background,
+    int super_sample
+) {
+    for (int i = 0; i < polylines.size() - 1; i++) {
+        drawLineSuper(canvas, color, polylines[i], polylines[i+1], width, background, super_sample);
+    }
+
+    if (closed) {
+        drawLineSuper(canvas, color, polylines.back(), polylines.front(), width, background, super_sample);
+    }
+}
+
+void renderSimpleShapeSuper(
+    Image3& canvas,
+    const std::vector<Vector2>& polyline,
+    Vector3 fill_color,
+    Vector3 background,
+    int super_sample
+) {
+    Real pixel_step = 1.0 / super_sample;
+
+    for (int i = 0; i < canvas.width; i++) {
+        for (int j = 0; j < canvas.height; j++) {
+            Real flippedY = canvas.height - 1 - j;
+
+            Vector3 accum_color{0, 0, 0};
+
+            for (int sx = 0; sx < super_sample; sx++) {
+                for (int sy = 0; sy < super_sample; sy++) {
+                    Real sample_x = i + (sx + 0.5) * pixel_step;
+                    Real sample_y = j + (sy + 0.5) * pixel_step;
+
+                    Vector2 sample_point{sample_x, sample_y};
+                    Vector3 sample_color = background; 
+
+                    if (isInPoly(sample_point, polyline)) {
+                        sample_color = fill_color; 
+                    }
+
+                    accum_color += sample_color;
+                }
+            }
+
+            int avg_factor = super_sample * super_sample;
+            canvas(i, flippedY) = Vector3{
+                accum_color.x / avg_factor,
+                accum_color.y / avg_factor,
+                accum_color.z / avg_factor
+            };
+        }
+    }
+}
+

@@ -1,0 +1,122 @@
+{
+  "resolution": [
+    900,
+    450
+  ],
+  "background": [
+    0.5,
+    0.5,
+    0.5
+  ],
+  "objects": [
+    {
+      "name": "left_arm",
+      "type": "polyline",
+      "points": [
+        350,
+        120,
+        330,
+        80
+      ],
+      "stroke_color": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stroke_width": 10
+    },
+    {
+      "name": "legs",
+      "type": "polyline",
+      "points": [
+        340,
+        10,
+        350,
+        60,
+        360,
+        10
+      ],
+      "is_closed": false,
+      "stroke_color": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stroke_width": 10
+    },
+    {
+      "name": "head",
+      "type": "circle",
+      "center": [
+        350,
+        160
+      ],
+      "radius": 20,
+      "fill_color": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "body",
+      "type": "polyline",
+      "points": [
+        350,
+        160,
+        350,
+        60
+      ],
+      "stroke_color": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stroke_width": 10
+    },
+    {
+      "type": "polyline",
+      "points": [
+        380,
+        150,
+        350,
+        120
+      ],
+      "stroke_color": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stroke_width": 10
+    },
+    {
+      "type": "polyline",
+      "points": [
+        430,
+        210,
+        380,
+        150
+      ],
+      "stroke_color": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stroke_width": 7
+    },
+    {
+      "name": "moon",
+      "type": "circle",
+      "center": [
+        450,
+        225
+      ],
+      "radius": 120,
+      "fill_color": [
+        1.0,
+        0.9,
+        0.5
+      ]
+    }
+  ]
+}
