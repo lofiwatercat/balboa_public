@@ -1,6 +1,7 @@
 #pragma once
 
 #include "image.h"
+#include "matrix.h"
 #include <optional>
 #include <vector>
 #include <string>
@@ -22,3 +23,8 @@ void renderSimpleShape(Image3&, std::vector<Vector2>, Vector3);
 void drawLines(Image3&, Vector3, Real, std::vector<Vector2>, bool);
 void drawLine(Image3&, Vector3, Vector2, Vector2, Real);
 bool isInLine(Vector2, Vector2, Vector2, Real);
+
+void renderTransformedCircle(Image3& canvas, Matrix3x3 transform, Real radius, std::optional<Vector3> fill_color, Real stroke_width, std::optional<Vector3> stroke_color);
+
+std::vector<Vector2> transformPoints(const std::vector<Vector2>& points, const Matrix3x3 transform);
+

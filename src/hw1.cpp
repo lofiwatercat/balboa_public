@@ -131,7 +131,7 @@ Image3 hw_1_3(const std::vector<std::string> &params) {
         }
     }
 
-    // Draw the circles
+    // Draw the shapes
     for (auto it = scene.shapes.rbegin(); it != scene.shapes.rend(); it++) {
         auto& shape = *it;
         Vector3 default_color{0.5, 0.5, 0.5};
@@ -167,6 +167,47 @@ Image3 hw_1_4(const std::vector<std::string> &params) {
             img(x, y) = Vector3{1, 1, 1};
         }
     }
+
+    // Background
+    for (int y = 0; y < img.height; y++) {
+        for (int x = 0; x < img.width; x++) {
+            img(x, y) = scene.background;
+        }
+    }
+
+    // Draw the shapes
+    for (auto it = scene.shapes.rbegin(); it != scene.shapes.rend(); it++) {
+        auto& shape = *it;
+        Vector3 default_color{0.5, 0.5, 0.5};
+        if (auto *circle = std::get_if<Circle>(&shape)) {
+            // do something with circle
+            
+            renderTransformedCircle(
+                img,
+                circle->transform,
+                circle->radius,
+                circle->fill_color,
+                circle->stroke_width,
+                circle->stroke_color);
+        } else if (auto *polyline = std::get_if<Polyline>(&shape)) {
+            // do something with polyline
+            // transform polyline
+            std::vector<Vector2> transformed_points = transformPoints(polyline->points, polyline->transform);
+            // transform stroke_width
+            Real scaleX = std::sqrt(polyline->transform(0,0) * polyline->transform(0,0) + polyline->transform(1,0) * polyline->transform(1,0));
+            Real scaleY = std::sqrt(polyline->transform(0,1) * polyline->transform(0,1) + polyline->transform(1,1) * polyline->transform(1,1));
+            Real avgScale = (scaleX + scaleY) / 2;
+            Real scaledStroke = polyline->stroke_width * avgScale;
+
+            
+            if (polyline->is_closed && polyline->fill_color) renderSimpleShape(img, transformed_points, polyline->fill_color.value_or(default_color));
+
+            if (polyline->stroke_color) drawLines(img, polyline->stroke_color.value(), scaledStroke, transformed_points, polyline->is_closed);
+        }
+    }
+
+
+
     return img;
 }
 
@@ -367,4 +408,44 @@ bool isInLine(Vector2 q0, Vector2 p0, Vector2 p1, Real width) {
 
     // Rounded caps
     return (q_length <= width/2);
+}
+
+void renderTransformedCircle(
+    Image3& canvas,
+    Matrix3x3 transform,
+    Real radius,
+    std::optional<Vector3> fill_color,
+    Real stroke_width,
+    std::optional<Vector3> stroke_color
+) {
+    // Check if the pixel in the canvas space fits in the object space after transforming
+    Matrix3x3 invT = inverse(transform);
+
+    for (int i = 0; i < canvas.width; i++) {
+        for (int j = 0; j < canvas.height; j++) {
+            Real flippedY = canvas.height - 1 - j;
+
+            Vector3 c_pixel = Vector3{(Real) i, (Real)flippedY, 1.0};
+
+            Vector3 o_pixel = invT * c_pixel;
+
+            Real dist = std::sqrt(o_pixel.x * o_pixel.x + o_pixel.y * o_pixel.y);
+
+            if (fill_color && dist <= radius) {
+                canvas(i, j) = *fill_color;
+            } else if (stroke_color && stroke_width > 0 && dist >= radius - stroke_width / 2 && dist <= radius + stroke_width / 2) {
+                canvas(i, j) = *stroke_color;
+            }
+        }
+    }
+}
+
+std::vector<Vector2> transformPoints(const std::vector<Vector2>& points, const Matrix3x3 transform) {
+   std::vector<Vector2> result;
+   result.reserve(points.size());
+   for (const auto& p : points) {
+       Vector3 tp = transform * Vector3{p.x, p.y, 1.0};
+       result.push_back(Vector2{tp.x, tp.y});
+   }
+   return result;
 }
