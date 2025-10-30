@@ -1,5 +1,6 @@
 #include "hw2.h"
 #include "hw2_scenes.h"
+#include <limits>
 
 using namespace hw2;
 
@@ -159,12 +160,31 @@ Vector3 toProjectedPoint(Vector3 point) {
 }
 
 // Converts the projected points to the screen space
-Vector2 projectedToScreenSpace(Vector3 point, int width, int height) {
+Vector2 projectedToScreenSpace(Vector3 point, int width, int height, Real scale) {
     Real aspectRatio = (Real) width / height;
     return Vector2 {
-        (width * (point.x + aspectRatio)) / (2 * aspectRatio),
-        (height * (-point.y + aspectRatio)) / (2 * aspectRatio)
+        (width * (point.x + scale * aspectRatio)) / (2 * scale * aspectRatio),
+        (height * (-point.y + scale * aspectRatio)) / (2 * scale * aspectRatio)
     };
+}
+
+// Converts the screen space point to the projected point
+Vector3 screenSpaceToProjected(Vector2 point, int width, int height, Real scale) {
+    Real aspectRatio = (Real) width / height;
+    return Vector3 {
+         ((point.x * 2 * scale * aspectRatio) - (scale * aspectRatio)) / width,
+         - ((point.y * 2 * scale * aspectRatio) - (scale * aspectRatio)) / height,
+         -1.0
+    };
+}
+
+// Calculate area given three points
+Real calcTriangleArea(Vector3 base, Vector3 a, Vector3 b) {
+    Vector3 edgeA = a - base;
+    Vector3 edgeB = b - base;
+
+    Real area = length(cross(edgeA, edgeB));
+    return area;
 }
 
 Image3 hw_2_2(const std::vector<std::string> &params) {
@@ -207,53 +227,111 @@ Image3 hw_2_2(const std::vector<std::string> &params) {
     // 6. Obtain depth of the ipp and use the depth to pick the triangle closest to the pixel sample but in front of the clipping plane.
     
     // Check if any if of the z-coordinates are behind the camera
-    bool rejected = false;
-
     // Project triangle vertices
-    std::vector<Vector3> projectedVertices;
+    std::vector<std::tuple<Vector3, bool>> projectedVertices;
     for (Vector3 vertex: mesh.vertices) {
+        bool rejected = false;
         if (-vertex.z < z_near) {
             rejected = true;
         }
         Vector3 projectedVertex = toProjectedPoint(vertex);
-        projectedVertices.push_back(projectedVertex);
+        projectedVertices.push_back(std::make_tuple(projectedVertex, rejected));
     }
 
     // Convert projected points to screen space
-    std::vector<Vector2> screenVertices;
-    for (Vector3 vertex: projectedVertices) {
-        Vector2 screenVertex = projectedToScreenSpace(vertex, img.width, img.height);
-        screenVertices.push_back(screenVertex);
+    // tuple is Vector3 vertex, bool rejected
+    std::vector<std::tuple<Vector2, bool>> screenVertices;
+    for (std::tuple<Vector3, bool> tuple : projectedVertices) {
+        bool rejected = std::get<1>(tuple);
+        Vector2 screenVertex = projectedToScreenSpace(std::get<0>(tuple), img.width, img.height, s);
+        screenVertices.push_back(std::make_tuple(screenVertex, rejected));
     }
 
     // Create the screen triangles
-    std::vector<std::tuple<std::vector<Vector2>, Vector3>> polylines;
+    std::vector<std::tuple<std::vector<Vector2>, Vector3, bool>> polylines;
     for (int i = 0; i < mesh.faces.size(); i++) {
+        bool rejected = false;
         std::vector<Vector2> polyline;
-        polyline.push_back(screenVertices[mesh.faces[i].x]);
-        polyline.push_back(screenVertices[mesh.faces[i].y]);
-        polyline.push_back(screenVertices[mesh.faces[i].z]);
-        polylines.push_back(std::make_tuple(polyline, mesh.face_colors[i]));
+
+        auto [v0, r0] = screenVertices[mesh.faces[i].x];
+        auto [v1, r1] = screenVertices[mesh.faces[i].y];
+        auto [v2, r2] = screenVertices[mesh.faces[i].z];
+
+        rejected = (r0 || r1 || r2);
+
+        polyline.push_back(v0);
+        polyline.push_back(v1);
+        polyline.push_back(v2);
+        
+        polylines.push_back(std::make_tuple(polyline, mesh.face_colors[i], rejected));
         
     }
+
+    // Create the original point triangles
+    std::vector<std::vector<Vector3>> originalPolylines;
+    for (int i = 0; i < mesh.faces.size(); i++) {
+        std::vector<Vector3> originalPolyline;
+        originalPolyline.push_back(mesh.vertices[mesh.faces[i].x]);
+        originalPolyline.push_back(mesh.vertices[mesh.faces[i].y]);
+        originalPolyline.push_back(mesh.vertices[mesh.faces[i].z]);
+        originalPolylines.push_back(originalPolyline);
+    }
+    
     // Check if the image plane point is in the triangle for every triangle
     for (int y = 0; y < img.height; y++) {
         for (int x = 0; x < img.width; x++) {
             img(x, y) = Vector3{0.5, 0.5, 0.5};
             Vector2 pixelCenter{x + 0.5, y + 0.5};
-            for (auto &[polyline, faceColor] : polylines) {
-                if (!rejected && point_in_polyline_fill(pixelCenter, polyline)) {
-                    img(x, y) = faceColor;
+            Real closest = -std::numeric_limits<Real>::infinity();
+            for (int i = 0; i < polylines.size(); i++) {
+                bool rejected = std::get<2>(polylines[i]);
+                // bool rejected = false;
+                if (!rejected && point_in_polyline_fill(pixelCenter, std::get<0>(polylines[i]))) {
+                    std::vector<Vector2> polyline = std::get<0>(polylines[i]);
+                    std::vector<Vector3> originalPolyline = originalPolylines[i];
+                    // Pixel is in the triangle, now find the barycentric coordinates
+                    // img(x, y) = std::get<1>(polylines[i]);
+                    Vector3 pixelCenterProjected = screenSpaceToProjected(pixelCenter, img.width, img.height, s);
+
+                    // These points are in the projected space
+                    Vector3 p0_1 = screenSpaceToProjected(polyline[0], img.width, img.height, s);
+                    Vector3 p1_1 = screenSpaceToProjected(polyline[1], img.width, img.height, s);
+                    Vector3 p2_1 = screenSpaceToProjected(polyline[2], img.width, img.height, s);
+
+                    Real b0_1 =
+                        calcTriangleArea(pixelCenterProjected, p1_1, p2_1) /
+                        calcTriangleArea(p0_1, p1_1, p2_1);
+                    Real b1_1 =
+                        calcTriangleArea(p0_1, pixelCenterProjected, p2_1) /
+                        calcTriangleArea(p0_1, p1_1, p2_1);
+                    Real b2_1 =
+                        calcTriangleArea(p0_1, p1_1, pixelCenterProjected) /
+                        calcTriangleArea(p0_1, p1_1, p2_1);
+
+                    // Step 5: Calculate the barycentric coordinates of the original point
+                    Vector3 p0 = originalPolyline[0];
+                    Vector3 p1 = originalPolyline[1];
+                    Vector3 p2 = originalPolyline[2];
+
+                    Real common_denominator = (b0_1 / p0.z) + (b1_1 / p1.z) + (b2_1 / p2.z);
+
+                    Real b0 = (b0_1 / p0.z) / common_denominator;
+                    Real b1 = (b1_1 / p1.z) / common_denominator;
+                    Real b2 = (b2_1 / p2.z) / common_denominator;
+
+                    // Now calculate the original depth
+                    Real depth = b0 * p0.z + b1 * p1.z + b2 * p2.z;
+
+                    // Step 6: Use the depth to pick the closest triangle
+                    // img(x, y) = std::get<1>(polylines[i]);
+                    if (depth > closest) {
+                        closest = depth;
+                        img(x, y) = std::get<1>(polylines[i]);
+                    }
                 }
             } 
         }
     }
-
-
-
-
-
-
     
     return img;
 }  
